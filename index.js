@@ -3,285 +3,164 @@ const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const passport = require("passport");
 const LocalStrategy = require("passport-local").Strategy;
-const jwt = require("jsonwebtoken");
-const cors = require("cors");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-const User = require("./models/user");
-const Message = require("./models/message");
 
 const app = express();
 const port = 8000;
+const cors = require("cors");
+app.use(cors());
 
-// Create files directory if it doesn't exist
-const filesDir = path.join(__dirname, "files");
-if (!fs.existsSync(filesDir)) {
-  fs.mkdirSync(filesDir, { recursive: true });
-}
-
-// Security middleware
-app.use(helmet());
-
-app.use(cors({
-  origin: '*',  // 🚨 WARNING: Accepts all origins (safe only for testing)
-  credentials: true,
-}));
-
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
-
-// Body parsing
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(passport.initialize());
+const jwt = require("jsonwebtoken");
 
-// Serve static files
-app.use("/files", express.static(filesDir));
+mongoose
+  .connect("mongodb+srv://sujananand:sujan@cluster0.qvtqiux.mongodb.net/", {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log("Connected to Mongo Db");
+  })
+  .catch((err) => {
+    console.log("Error connecting to MongoDb", err);
+  });
 
-// MongoDB connection
-mongoose.connect("mongodb+srv://mohdirfan70097:yb9jVLDQ5oWIvNnN@cluster0.mta1qfl.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log("Connected to MongoDB"))
-.catch(err => console.error("MongoDB connection error:", err));
-
-// JWT Secret Key
-const JWT_SECRET = "Q$r2K6W8n!qewfrgww%Zk"; // In production, use environment variable
-
-// Configure multer for handling file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, filesDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
+app.listen(port, () => {
+  console.log("Server running on port 8000");
 });
 
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'), false);
-    }
-  }
-});
+const User = require("./models/user");
+const Message = require("./models/message");
 
-// Enhanced register endpoint
-app.post("/register", async (req, res) => {
-  try {
-    const { name, email, password, image } = req.body;
-    
-    // Validation
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
+//endpoint for registration of the user
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
+app.post("/register", (req, res) => {
+  const { name, email, password, image } = req.body;
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "Email already exists" });
-    }
+  // create a new User object
+  const newUser = new User({ name, email, password, image });
 
-    const newUser = new User({ name, email, password, image });
-    await newUser.save();
-    
-    res.status(201).json({ 
-      message: "User registered successfully",
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        image: newUser.image
-      }
+  // save the user to the database
+  newUser
+    .save()
+    .then(() => {
+      res.status(200).json({ message: "User registered successfully" });
+    })
+    .catch((err) => {
+      console.log("Error registering user", err);
+      res.status(500).json({ message: "Error registering the user!" });
     });
-  } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
 });
 
-// Token creator
+//function to create a token for the user
 const createToken = (userId) => {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "1h" });
+  // Set the token payload
+  const payload = {
+    userId: userId,
+  };
+
+  // Generate the token with a secret key and expiration time
+  const token = jwt.sign(payload, "Q$r2K6W8n!jCW%Zk", { expiresIn: "1h" });
+
+  return token;
 };
 
-// Enhanced login endpoint
-app.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password required" });
-    }
+//endpoint for logging in of that particular user
+app.post("/login", (req, res) => {
+  const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+  //check if the email and password are provided
+  if (!email || !password) {
+    return res
+      .status(404)
+      .json({ message: "Email and the password are required" });
+  }
 
-    if (user.password !== password) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    const token = createToken(user._id);
-    res.status(200).json({ 
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        image: user.image
+  //check for that user in the database
+  User.findOne({ email })
+    .then((user) => {
+      if (!user) {
+        //user not found
+        return res.status(404).json({ message: "User not found" });
       }
+
+      //compare the provided passwords with the password in the database
+      if (user.password !== password) {
+        return res.status(404).json({ message: "Invalid Password!" });
+      }
+
+      const token = createToken(user._id);
+      res.status(200).json({ token });
+    })
+    .catch((error) => {
+      console.log("error in finding the user", error);
+      res.status(500).json({ message: "Internal server Error!" });
     });
-  } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
 });
 
-// Get all users except the logged-in user
-app.get("/users/:userId", async (req, res) => {
-  try {
-    const loggedInUserId = req.params.userId;
+//endpoint to access all the users except the user who's is currently logged in!
+app.get("/users/:userId", (req, res) => {
+  const loggedInUserId = req.params.userId;
 
-    // Get logged-in user to access friends & sentFriendRequests
-    const loggedInUser = await User.findById(loggedInUserId).lean();
-    if (!loggedInUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const sentRequestsSet = new Set(
-      (loggedInUser.sentFriendRequests || []).map(id => id.toString())
-    );
-
-    const friendsSet = new Set(
-      (loggedInUser.friends || []).map(id => id.toString())
-    );
-
-    // Get all other users
-    const users = await User.find({ _id: { $ne: loggedInUserId } }).lean();
-
-    // Enrich each user with request/friendship status
-    const enrichedUsers = users.map(user => ({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      image: user.image,
-      hasPendingRequest: sentRequestsSet.has(user._id.toString()),
-      isFriend: friendsSet.has(user._id.toString())
-    }));
-
-    res.status(200).json(enrichedUsers);
-  } catch (err) {
-    console.error("Error retrieving users:", err);
-    res.status(500).json({ message: "Error retrieving users" });
-  }
+  User.find({ _id: { $ne: loggedInUserId } })
+    .then((users) => {
+      res.status(200).json(users);
+    })
+    .catch((err) => {
+      console.log("Error retrieving users", err);
+      res.status(500).json({ message: "Error retrieving users" });
+    });
 });
 
-// Friend request endpoint
+//endpoint to send a request to a user
 app.post("/friend-request", async (req, res) => {
-  const { senderId, recipientId } = req.body;
+  const { currentUserId, selectedUserId } = req.body;
 
   try {
-    // Check if users exist
-    const [sender, recipient] = await Promise.all([
-      User.findById(senderId),
-      User.findById(recipientId)
-    ]);
-
-    if (!sender || !recipient) {
-      return res.status(404).json({ 
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    // Check if request already exists
-    if (recipient.freindRequests.includes(senderId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Friend request already sent"
-      });
-    }
-
-    // Check if already friends
-    if (sender.friends.includes(recipientId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Already friends"
-      });
-    }
-
-    // Update the recipient's friendRequests array
-    await User.findByIdAndUpdate(recipientId, {
-      $push: { freindRequests: senderId },
+    //update the recepient's friendRequestsArray!
+    await User.findByIdAndUpdate(selectedUserId, {
+      $push: { freindRequests: currentUserId },
     });
 
-    // Update the sender's sentFriendRequests array
-    await User.findByIdAndUpdate(senderId, {
-      $push: { sentFriendRequests: recipientId },
+    //update the sender's sentFriendRequests array
+    await User.findByIdAndUpdate(currentUserId, {
+      $push: { sentFriendRequests: selectedUserId },
     });
 
-    res.status(200).json({
-      success: true,
-      message: "Friend request sent successfully"
-    });
+    res.sendStatus(200);
   } catch (error) {
-    console.error("Friend request error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error"
-    });
+    res.sendStatus(500);
   }
 });
 
-// Get friend requests for a user
+//endpoint to show all the friend-requests of a particular user
 app.get("/friend-request/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
+
+    //fetch the user document based on the User id
     const user = await User.findById(userId)
       .populate("freindRequests", "name email image")
       .lean();
 
-    res.json(user.freindRequests);
+    const freindRequests = user.freindRequests;
+
+    res.json(freindRequests);
   } catch (error) {
-    console.error(error);
+    console.log(error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-// Accept friend request
+//endpoint to accept a friend-request of a particular person
 app.post("/friend-request/accept", async (req, res) => {
   try {
     const { senderId, recepientId } = req.body;
 
-    const [sender, recepient] = await Promise.all([
-      User.findById(senderId),
-      User.findById(recepientId)
-    ]);
-
-    if (!sender || !recepient) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    //retrieve the documents of sender and the recipient
+    const sender = await User.findById(senderId);
+    const recepient = await User.findById(recepientId);
 
     sender.friends.push(recepientId);
     recepient.friends.push(senderId);
@@ -291,19 +170,20 @@ app.post("/friend-request/accept", async (req, res) => {
     );
 
     sender.sentFriendRequests = sender.sentFriendRequests.filter(
-      (request) => request.toString() !== recepientId.toString()
+      (request) => request.toString() !== recepientId.toString
     );
 
-    await Promise.all([sender.save(), recepient.save()]);
+    await sender.save();
+    await recepient.save();
 
     res.status(200).json({ message: "Friend Request accepted successfully" });
   } catch (error) {
-    console.error(error);
+    console.log(error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-// Get accepted friends
+//endpoint to access all the friends of the logged in user!
 app.get("/accepted-friends/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -311,187 +191,68 @@ app.get("/accepted-friends/:userId", async (req, res) => {
       "friends",
       "name email image"
     );
-    res.json(user.friends);
+    const acceptedFriends = user.friends;
+    res.json(acceptedFriends);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// Logout endpoint
-app.post("/logout", (req, res) => {
-  res.status(200).json({ message: "Logged out successfully" });
+const multer = require("multer");
+
+// Configure multer for handling file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "files/"); // Specify the desired destination folder
+  },
+  filename: function (req, file, cb) {
+    // Generate a unique filename for the uploaded file
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + "-" + file.originalname);
+  },
 });
 
-// Enhanced message sending endpoint
-// In your API index.js (backend)
+const upload = multer({ storage: storage });
+
+//endpoint to post Messages and store it in the backend
 app.post("/messages", upload.single("imageFile"), async (req, res) => {
   try {
-    // Extract fields from request
-    const { senderId, recipientId, messageType, messageText } = req.body;
-    const imageFile = req.file;
+    const { senderId, recepientId, messageType, messageText } = req.body;
 
-    // Validate ObjectIds
-    if (!mongoose.Types.ObjectId.isValid(senderId) || 
-        !mongoose.Types.ObjectId.isValid(recipientId)) {
-      return res.status(400).json({ 
-        success: false,
-        error: "Invalid user IDs provided",
-        details: {
-          senderIdValid: mongoose.Types.ObjectId.isValid(senderId),
-          recipientIdValid: mongoose.Types.ObjectId.isValid(recipientId)
-        }
-      });
-    }
-
-    // Validate message type
-    if (!["text", "image"].includes(messageType)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid message type. Must be either 'text' or 'image'"
-      });
-    }
-
-    // Validate content based on message type
-    if (messageType === "text") {
-      if (!messageText?.trim()) {
-        return res.status(400).json({
-          success: false,
-          error: "Message text is required for text messages"
-        });
-      }
-      
-      if (messageText.trim().length > 1000) {
-        return res.status(400).json({
-          success: false,
-          error: "Message text cannot exceed 1000 characters"
-        });
-      }
-    } 
-    else if (messageType === "image") {
-      if (!imageFile) {
-        return res.status(400).json({
-          success: false,
-          error: "Image file is required for image messages"
-        });
-      }
-
-      // Validate image file type and size
-      const allowedTypes = ["image/jpeg", "image/png", "image/gif"];
-      if (!allowedTypes.includes(imageFile.mimetype)) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid image type. Only JPEG, PNG, and GIF are allowed"
-        });
-      }
-
-      if (imageFile.size > 5 * 1024 * 1024) { // 5MB limit
-        return res.status(400).json({
-          success: false,
-          error: "Image size cannot exceed 5MB"
-        });
-      }
-    }
-
-    // Check if users exist
-    const [sender, recipient] = await Promise.all([
-      User.findById(senderId),
-      User.findById(recipientId)
-    ]);
-
-    if (!sender || !recipient) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-        details: {
-          senderExists: !!sender,
-          recipientExists: !!recipient
-        }
-      });
-    }
-
-    // Create message object
-    const messageData = {
+    const newMessage = new Message({
       senderId,
-      recipientId,
+      recepientId,
       messageType,
-      timeStamp: new Date()
-    };
+      message: messageText,
+      timestamp: new Date(),
+      imageUrl: messageType === "image" ? req.file.path : null,
+    });
 
-    if (messageType === "text") {
-      messageData.message = messageText.trim();
-    } else {
-      // Generate secure filename and path
-      const fileExt = path.extname(imageFile.originalname);
-      const fileName = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${fileExt}`;
-      const filePath = path.join(__dirname, 'uploads', fileName);
-      
-      // Move file to permanent storage
-      await fs.promises.rename(imageFile.path, filePath);
-      
-      messageData.imageUrl = `/uploads/${fileName}`;
-    }
-
-    // Save message to database
-    const newMessage = new Message(messageData);
     await newMessage.save();
-
-    // Emit real-time event (if using Socket.io)
-    if (io) {
-      io.to(recipientId.toString()).emit('newMessage', newMessage);
-    }
-
-    // Return success response
-    return res.status(201).json({
-      success: true,
-      message: "Message sent successfully",
-      data: {
-        ...newMessage.toObject(),
-        sender: {
-          _id: sender._id,
-          name: sender.name,
-          avatar: sender.avatar
-        }
-      }
-    });
-
+    res.status(200).json({ message: "Message sent Successfully" });
   } catch (error) {
-    console.error("Message sending error:", error);
-    
-    // Clean up uploaded file if something went wrong
-    if (req.file?.path) {
-      try {
-        await fs.promises.unlink(req.file.path);
-      } catch (cleanupError) {
-        console.error("Failed to cleanup uploaded file:", cleanupError);
-      }
-    }
-
-    return res.status(500).json({ 
-      success: false,
-      error: "Internal Server Error",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined
-    });
-  }
-});
-// Get user details endpoint
-app.get("/user/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const user = await User.findById(userId);
-    
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    res.json(user);
-  } catch (error) {
-    console.error("Error fetching user:", error);
+    console.log(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// Enhanced message fetching endpoint
+///endpoint to get the userDetails to design the chat Room header
+app.get("/user/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    //fetch the user data from the user ID
+    const recepientId = await User.findById(userId);
+
+    res.json(recepientId);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+//endpoint to fetch the messages between two users in the chatRoom
 app.get("/messages/:senderId/:recepientId", async (req, res) => {
   try {
     const { senderId, recepientId } = req.params;
@@ -501,102 +262,64 @@ app.get("/messages/:senderId/:recepientId", async (req, res) => {
         { senderId: senderId, recepientId: recepientId },
         { senderId: recepientId, recepientId: senderId },
       ],
-    })
-    .populate("senderId", "_id name image")
-    .sort({ timestamp: 1 });
+    }).populate("senderId", "_id name");
 
     res.json(messages);
   } catch (error) {
-    console.error("Error fetching messages:", error);
+    console.log(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// Delete messages endpoint
+//endpoint to delete the messages!
 app.post("/deleteMessages", async (req, res) => {
   try {
     const { messages } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ message: "Invalid request body" });
+      return res.status(400).json({ message: "invalid req body!" });
     }
 
     await Message.deleteMany({ _id: { $in: messages } });
 
-    res.json({ message: "Messages deleted successfully" });
+    res.json({ message: "Message deleted successfully" });
   } catch (error) {
-    console.error("Error deleting messages:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.log(error);
+    res.status(500).json({ error: "Internal Server" });
   }
 });
 
-// Get sent friend requests
-app.get("/friend-requests/sent/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const user = await User.findById(userId)
-      .populate("sentFriendRequests", "name email image")
-      .lean();
 
-    res.json(user.sentFriendRequests);
-  } catch (error) {
-    console.error("Error fetching sent requests:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+
+app.get("/friend-requests/sent/:userId",async(req,res) => {
+  try{
+    const {userId} = req.params;
+    const user = await User.findById(userId).populate("sentFriendRequests","name email image").lean();
+
+    const sentFriendRequests = user.sentFriendRequests;
+
+    res.json(sentFriendRequests);
+  } catch(error){
+    console.log("error",error);
+    res.status(500).json({ error: "Internal Server" });
   }
-});
+})
 
-// Get friends list
-app.get("/friends/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const user = await User.findById(userId).populate("friends");
+app.get("/friends/:userId",(req,res) => {
+  try{
+    const {userId} = req.params;
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    User.findById(userId).populate("friends").then((user) => {
+      if(!user){
+        return res.status(404).json({message: "User not found"})
+      }
 
-    const friendIds = user.friends.map((friend) => friend._id);
-    res.status(200).json(friendIds);
-  } catch (error) {
-    console.error("Error fetching friends:", error);
-    res.status(500).json({ message: "Internal server error" });
+      const friendIds = user.friends.map((friend) => friend._id);
+
+      res.status(200).json(friendIds);
+    })
+  } catch(error){
+    console.log("error",error);
+    res.status(500).json({message:"internal server error"})
   }
-});
-
-// Get friends with details
-app.get("/friends-with-details/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const user = await User.findById(userId)
-      .populate("friends", "name email image lastSeen");
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    res.status(200).json(user.friends);
-  } catch (error) {
-    console.error("Error fetching friends with details:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
-
-// Health check endpoint
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "OK" });
-});
-
-app.get("/", (req, res) => {
-  res.send("I am Running")
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: "Something went wrong!" });
-});
-
-// Start server
-app.listen(port, "0.0.0.0", () => {
-  console.log(`Server running on port ${port}`);
-});
+})
