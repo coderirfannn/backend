@@ -327,7 +327,7 @@ app.post("/logout", (req, res) => {
 // In your API index.js (backend)
 app.post("/messages", upload.single("imageFile"), async (req, res) => {
   try {
-    // Important: For FormData, fields come from req.body but files come from req.file
+    // Extract fields from request
     const { senderId, recipientId, messageType, messageText } = req.body;
     const imageFile = req.file;
 
@@ -336,67 +336,141 @@ app.post("/messages", upload.single("imageFile"), async (req, res) => {
         !mongoose.Types.ObjectId.isValid(recipientId)) {
       return res.status(400).json({ 
         success: false,
-        error: "Invalid user IDs provided" 
+        error: "Invalid user IDs provided",
+        details: {
+          senderIdValid: mongoose.Types.ObjectId.isValid(senderId),
+          recipientIdValid: mongoose.Types.ObjectId.isValid(recipientId)
+        }
       });
     }
 
-    // Validate required fields based on message type
-    if (messageType === "text" && !messageText?.trim()) {
+    // Validate message type
+    if (!["text", "image"].includes(messageType)) {
       return res.status(400).json({
         success: false,
-        error: "Message text is required for text messages"
+        error: "Invalid message type. Must be either 'text' or 'image'"
       });
     }
 
-    if (messageType === "image" && !imageFile) {
-      return res.status(400).json({
-        success: false,
-        error: "Image file is required for image messages"
-      });
-    }
-
-    // Process the message based on type
-    let newMessage;
+    // Validate content based on message type
     if (messageType === "text") {
-      newMessage = new Message({
-        senderId,
-        recipientId,
-        messageType: "text",
-        message: messageText,
-      });
-    } else if (messageType === "image") {
-      // Construct the image URL based on your storage approach
-      const imageUrl = `/uploads/${imageFile.filename}`;
+      if (!messageText?.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: "Message text is required for text messages"
+        });
+      }
       
-      newMessage = new Message({
-        senderId,
-        recipientId,
-        messageType: "image",
-        imageUrl,
-      });
-    } else {
-      return res.status(400).json({
+      if (messageText.trim().length > 1000) {
+        return res.status(400).json({
+          success: false,
+          error: "Message text cannot exceed 1000 characters"
+        });
+      }
+    } 
+    else if (messageType === "image") {
+      if (!imageFile) {
+        return res.status(400).json({
+          success: false,
+          error: "Image file is required for image messages"
+        });
+      }
+
+      // Validate image file type and size
+      const allowedTypes = ["image/jpeg", "image/png", "image/gif"];
+      if (!allowedTypes.includes(imageFile.mimetype)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid image type. Only JPEG, PNG, and GIF are allowed"
+        });
+      }
+
+      if (imageFile.size > 5 * 1024 * 1024) { // 5MB limit
+        return res.status(400).json({
+          success: false,
+          error: "Image size cannot exceed 5MB"
+        });
+      }
+    }
+
+    // Check if users exist
+    const [sender, recipient] = await Promise.all([
+      User.findById(senderId),
+      User.findById(recipientId)
+    ]);
+
+    if (!sender || !recipient) {
+      return res.status(404).json({
         success: false,
-        error: "Invalid message type"
+        error: "User not found",
+        details: {
+          senderExists: !!sender,
+          recipientExists: !!recipient
+        }
       });
     }
 
-    // Save the message
+    // Create message object
+    const messageData = {
+      senderId,
+      recipientId,
+      messageType,
+      timeStamp: new Date()
+    };
+
+    if (messageType === "text") {
+      messageData.message = messageText.trim();
+    } else {
+      // Generate secure filename and path
+      const fileExt = path.extname(imageFile.originalname);
+      const fileName = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${fileExt}`;
+      const filePath = path.join(__dirname, 'uploads', fileName);
+      
+      // Move file to permanent storage
+      await fs.promises.rename(imageFile.path, filePath);
+      
+      messageData.imageUrl = `/uploads/${fileName}`;
+    }
+
+    // Save message to database
+    const newMessage = new Message(messageData);
     await newMessage.save();
 
-    // Return success response with the created message
+    // Emit real-time event (if using Socket.io)
+    if (io) {
+      io.to(recipientId.toString()).emit('newMessage', newMessage);
+    }
+
+    // Return success response
     return res.status(201).json({
       success: true,
       message: "Message sent successfully",
-      data: newMessage
+      data: {
+        ...newMessage.toObject(),
+        sender: {
+          _id: sender._id,
+          name: sender.name,
+          avatar: sender.avatar
+        }
+      }
     });
 
   } catch (error) {
     console.error("Message sending error:", error);
+    
+    // Clean up uploaded file if something went wrong
+    if (req.file?.path) {
+      try {
+        await fs.promises.unlink(req.file.path);
+      } catch (cleanupError) {
+        console.error("Failed to cleanup uploaded file:", cleanupError);
+      }
+    }
+
     return res.status(500).json({ 
       success: false,
       error: "Internal Server Error",
-      details: error.message
+      details: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
 });
