@@ -327,21 +327,73 @@ app.post("/logout", (req, res) => {
 // In your API index.js (backend)
 app.post("/messages", upload.single("imageFile"), async (req, res) => {
   try {
-    const { senderId, recepientId, messageType, messageText } = req.body;
+    // Important: For FormData, fields come from req.body but files come from req.file
+    const { senderId, recipientId, messageType, messageText } = req.body;
+    const imageFile = req.file;
 
     // Validate ObjectIds
     if (!mongoose.Types.ObjectId.isValid(senderId) || 
-        !mongoose.Types.ObjectId.isValid(recepientId)) {
+        !mongoose.Types.ObjectId.isValid(recipientId)) {
       return res.status(400).json({ 
         success: false,
         error: "Invalid user IDs provided" 
       });
     }
 
-    // Rest of your message handling code...
+    // Validate required fields based on message type
+    if (messageType === "text" && !messageText?.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Message text is required for text messages"
+      });
+    }
+
+    if (messageType === "image" && !imageFile) {
+      return res.status(400).json({
+        success: false,
+        error: "Image file is required for image messages"
+      });
+    }
+
+    // Process the message based on type
+    let newMessage;
+    if (messageType === "text") {
+      newMessage = new Message({
+        senderId,
+        recipientId,
+        messageType: "text",
+        message: messageText,
+      });
+    } else if (messageType === "image") {
+      // Construct the image URL based on your storage approach
+      const imageUrl = `/uploads/${imageFile.filename}`;
+      
+      newMessage = new Message({
+        senderId,
+        recipientId,
+        messageType: "image",
+        imageUrl,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid message type"
+      });
+    }
+
+    // Save the message
+    await newMessage.save();
+
+    // Return success response with the created message
+    return res.status(201).json({
+      success: true,
+      message: "Message sent successfully",
+      data: newMessage
+    });
+
   } catch (error) {
     console.error("Message sending error:", error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false,
       error: "Internal Server Error",
       details: error.message
