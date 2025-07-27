@@ -113,6 +113,25 @@ app.get("/users/:userId", (req, res) => {
     });
 });
 
+
+app.get("/friends-with-details/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId)
+      .populate("friends", "name email image lastSeen");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json(user.friends);
+  } catch (error) {
+    console.error("Error fetching friends with details:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
 //endpoint to send a request to a user
 app.post("/friend-request", async (req, res) => {
   const { currentUserId, selectedUserId } = req.body;
