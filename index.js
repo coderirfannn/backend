@@ -237,11 +237,11 @@ const upload = multer({ storage: storage });
 //endpoint to post Messages and store it in the backend
 app.post("/messages", upload.single("imageFile"), async (req, res) => {
   try {
-    const { senderId, recepientId, messageType, messageText } = req.body;
+    const { senderId, recipientId, messageType, messageText } = req.body;
 
     const newMessage = new Message({
       senderId,
-      recepientId,
+      recipientId,
       messageType,
       message: messageText,
       timestamp: new Date(),
@@ -272,14 +272,14 @@ app.get("/user/:userId", async (req, res) => {
 });
 
 //endpoint to fetch the messages between two users in the chatRoom
-app.get("/messages/:senderId/:recepientId", async (req, res) => {
+app.get("/messages/:senderId/:recipientId", async (req, res) => {
   try {
-    const { senderId, recepientId } = req.params;
+    const { senderId, recipientId } = req.params;
 
     const messages = await Message.find({
       $or: [
-        { senderId: senderId, recepientId: recepientId },
-        { senderId: recepientId, recepientId: senderId },
+        { senderId: senderId, recipientId: recipientId },
+        { senderId: recipientId, recipientId: senderId },
       ],
     }).populate("senderId", "_id name");
 
