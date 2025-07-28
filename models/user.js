@@ -1,4 +1,50 @@
+// const mongoose = require("mongoose");
+// const userSchema = new mongoose.Schema({
+//   name: {
+//     type: String,
+//     required: true,
+//   },
+//   email: {
+//     type: String,
+//     required: true,
+//     unique: true,
+//   },
+//   password: {
+//     type: String,
+//     required: true,
+//   },
+//   image: {
+//     type: String,
+//     required: true,
+//   },
+//   freindRequests: [
+//     {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: "User",
+//     },
+//   ],
+//   friends: [
+//     {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: "User",
+//     },
+//   ],
+//   sentFriendRequests: [
+//     {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: "User",
+//     },
+//   ],
+// });
+
+
+// const User = mongoose.model("User",userSchema);
+
+// module.exports = User
+
+
 const mongoose = require("mongoose");
+
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -17,7 +63,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  freindRequests: [
+  friendRequests: [  // ✅ fixed typo
     {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -37,8 +83,7 @@ const userSchema = new mongoose.Schema({
   ],
 });
 
+const User = mongoose.model("User", userSchema);
 
-const User = mongoose.model("User",userSchema);
-
-module.exports = User
+module.exports = User;
 
