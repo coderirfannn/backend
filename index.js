@@ -267,27 +267,27 @@ app.post("/friend-request/accept", async (req, res) => {
 });
 
 
-// app.post("/accept-request", async (req, res) => {
-//   const { currentUserId, senderId } = req.body;
+app.post("/accept-request", async (req, res) => {
+  const { currentUserId, senderId } = req.body;
 
-//   try {
-//     // Add each other to friends
-//     await User.findByIdAndUpdate(currentUserId, {
-//       $push: { friends: senderId },
-//       $pull: { friendRequests: senderId }
-//     });
+  try {
+    // Add each other to friends
+    await User.findByIdAndUpdate(currentUserId, {
+      $push: { friends: senderId },
+      $pull: { friendRequests: senderId }
+    });
 
-//     await User.findByIdAndUpdate(senderId, {
-//       $push: { friends: currentUserId },
-//       $pull: { sentFriendRequests: currentUserId }
-//     });
+    await User.findByIdAndUpdate(senderId, {
+      $push: { friends: currentUserId },
+      $pull: { sentFriendRequests: currentUserId }
+    });
 
-//     res.sendStatus(200);
-//   } catch (error) {
-//     console.error(error);
-//     res.sendStatus(500);
-//   }
-// });
+    res.sendStatus(200);
+  } catch (error) {
+    console.error(error);
+    res.sendStatus(500);
+  }
+});
 
 
 //endpoint to access all the friends of the logged in user!
