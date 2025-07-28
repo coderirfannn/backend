@@ -133,25 +133,49 @@ app.get("/friends-with-details/:userId", async (req, res) => {
 
 
 // //endpoint to send a request to a user
+// app.post("/friend-request", async (req, res) => {
+//   const { currentUserId, selectedUserId } = req.body;
+
+//   try {
+//     //update the recepient's friendRequestsArray!
+//     await User.findByIdAndUpdate(selectedUserId, {
+//       $push: { freindRequests: currentUserId },
+//     });
+
+//     //update the sender's sentFriendRequests array
+//     await User.findByIdAndUpdate(currentUserId, {
+//       $push: { sentFriendRequests: selectedUserId },
+//     });
+
+//     res.sendStatus(200);
+//   } catch (error) {
+//     res.sendStatus(500);
+//   }
+// });
+
+
+
 app.post("/friend-request", async (req, res) => {
   const { currentUserId, selectedUserId } = req.body;
 
   try {
-    //update the recepient's friendRequestsArray!
+    // Update the recipient's friendRequests array
     await User.findByIdAndUpdate(selectedUserId, {
-      $push: { freindRequests: currentUserId },
+      $push: { friendRequests: currentUserId },
     });
 
-    //update the sender's sentFriendRequests array
+    // Update the sender's sentFriendRequests array
     await User.findByIdAndUpdate(currentUserId, {
       $push: { sentFriendRequests: selectedUserId },
     });
 
     res.sendStatus(200);
   } catch (error) {
+    console.error("Friend request error:", error); // Add this for debugging
     res.sendStatus(500);
   }
 });
+
 
 
 // app.get("/users/:userId", async (req, res) => {
