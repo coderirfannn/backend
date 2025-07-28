@@ -132,26 +132,66 @@ app.get("/friends-with-details/:userId", async (req, res) => {
 });
 
 
-//endpoint to send a request to a user
-app.post("/friend-request", async (req, res) => {
-  const { currentUserId, selectedUserId } = req.body;
+// //endpoint to send a request to a user
+// app.post("/friend-request", async (req, res) => {
+//   const { currentUserId, selectedUserId } = req.body;
 
+//   try {
+//     //update the recepient's friendRequestsArray!
+//     await User.findByIdAndUpdate(selectedUserId, {
+//       $push: { freindRequests: currentUserId },
+//     });
+
+//     //update the sender's sentFriendRequests array
+//     await User.findByIdAndUpdate(currentUserId, {
+//       $push: { sentFriendRequests: selectedUserId },
+//     });
+
+//     res.sendStatus(200);
+//   } catch (error) {
+//     res.sendStatus(500);
+//   }
+// });
+
+
+app.get("/users/:userId", async (req, res) => {
   try {
-    //update the recepient's friendRequestsArray!
-    await User.findByIdAndUpdate(selectedUserId, {
-      $push: { freindRequests: currentUserId },
+    const { userId } = req.params;
+
+    const currentUser = await User.findById(userId);
+    const allUsers = await User.find({ _id: { $ne: userId } });
+
+    const usersWithStatus = allUsers.map(user => {
+      let status = "none";
+
+      const isFriend = currentUser.friends?.includes(user._id) && user.friends?.includes(userId);
+      const isRequested = currentUser.sentFriendRequests?.includes(user._id);
+      const isReceived = currentUser.friendRequests?.includes(user._id);
+
+      if (isFriend) {
+        status = "friends";
+      } else if (isRequested) {
+        status = "requested";
+      } else if (isReceived) {
+        status = "pending"; // optional: if showing incoming requests
+      }
+
+      return {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        friendStatus: status, // ⬅️ frontend uses this
+      };
     });
 
-    //update the sender's sentFriendRequests array
-    await User.findByIdAndUpdate(currentUserId, {
-      $push: { sentFriendRequests: selectedUserId },
-    });
-
-    res.sendStatus(200);
-  } catch (error) {
-    res.sendStatus(500);
+    res.json(usersWithStatus);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch users" });
   }
 });
+
 
 //endpoint to show all the friend-requests of a particular user
 app.get("/friend-request/:userId", async (req, res) => {
@@ -173,34 +213,58 @@ app.get("/friend-request/:userId", async (req, res) => {
 });
 
 //endpoint to accept a friend-request of a particular person
-app.post("/friend-request/accept", async (req, res) => {
+// app.post("/friend-request/accept", async (req, res) => {
+//   try {
+//     const { senderId, recepientId } = req.body;
+
+//     //retrieve the documents of sender and the recipient
+//     const sender = await User.findById(senderId);
+//     const recepient = await User.findById(recepientId);
+
+//     sender.friends.push(recepientId);
+//     recepient.friends.push(senderId);
+
+//     recepient.freindRequests = recepient.freindRequests.filter(
+//       (request) => request.toString() !== senderId.toString()
+//     );
+
+//     sender.sentFriendRequests = sender.sentFriendRequests.filter(
+//       (request) => request.toString() !== recepientId.toString
+//     );
+
+//     await sender.save();
+//     await recepient.save();
+
+//     res.status(200).json({ message: "Friend Request accepted successfully" });
+//   } catch (error) {
+//     console.log(error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//   }
+// });
+
+
+app.post("/accept-request", async (req, res) => {
+  const { currentUserId, senderId } = req.body;
+
   try {
-    const { senderId, recepientId } = req.body;
+    // Add each other to friends
+    await User.findByIdAndUpdate(currentUserId, {
+      $push: { friends: senderId },
+      $pull: { friendRequests: senderId }
+    });
 
-    //retrieve the documents of sender and the recipient
-    const sender = await User.findById(senderId);
-    const recepient = await User.findById(recepientId);
+    await User.findByIdAndUpdate(senderId, {
+      $push: { friends: currentUserId },
+      $pull: { sentFriendRequests: currentUserId }
+    });
 
-    sender.friends.push(recepientId);
-    recepient.friends.push(senderId);
-
-    recepient.freindRequests = recepient.freindRequests.filter(
-      (request) => request.toString() !== senderId.toString()
-    );
-
-    sender.sentFriendRequests = sender.sentFriendRequests.filter(
-      (request) => request.toString() !== recepientId.toString
-    );
-
-    await sender.save();
-    await recepient.save();
-
-    res.status(200).json({ message: "Friend Request accepted successfully" });
+    res.sendStatus(200);
   } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error(error);
+    res.sendStatus(500);
   }
 });
+
 
 //endpoint to access all the friends of the logged in user!
 app.get("/accepted-friends/:userId", async (req, res) => {
