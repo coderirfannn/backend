@@ -467,3 +467,29 @@ app.get("/friends/:userId",(req,res) => {
     res.status(500).json({message:"internal server error"})
   }
 })
+
+
+
+app.post('/friend-request/reject', async (req, res) => {
+  try {
+    const { recepientId, userId } = req.body;
+
+    await User.findByIdAndUpdate(userId, {
+      $pull: { friendRequests: requestId }
+    });
+
+    await User.findByIdAndUpdate(requestId, {
+      $pull: { sentFriendRequests: userId }
+    });
+
+    res.status(200).json({ message: 'Friend request rejected' });
+  } catch (error) {
+    console.error('POST /friend-request/reject error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post("/logout", (req, res) => {
+  res.status(200).json({ message: "Logged out successfully" });
+});
+
