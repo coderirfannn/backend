@@ -260,15 +260,16 @@ app.get("/friend-request/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
+    //fetch the user document based on the User id
     const user = await User.findById(userId)
-      .populate("friendRequests", "name email image")
+      .populate("freindRequests", "name email image")
       .lean();
 
-    const friendRequests = user.friendRequests;
+    const freindRequests = user.freindRequests;
 
-    res.json(friendRequests);
+    res.json(freindRequests);
   } catch (error) {
-    console.log("GET /friend-request/:userId error:", error);
+    console.log(error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
@@ -305,24 +306,22 @@ app.post("/friend-request/accept", async (req, res) => {
 });
 
 
-app.post("/accept-request", async (req, res) => {
-  const { currentUserId, senderId } = req.body;
+app.post("/friend-request", async (req, res) => {
+  const { currentUserId, selectedUserId } = req.body;
 
   try {
-    // Add each other to friends
-    await User.findByIdAndUpdate(currentUserId, {
-      $push: { friends: senderId },
-      $pull: { friendRequests: senderId }
+    //update the recepient's friendRequestsArray!
+    await User.findByIdAndUpdate(selectedUserId, {
+      $push: { freindRequests: currentUserId },
     });
 
-    await User.findByIdAndUpdate(senderId, {
-      $push: { friends: currentUserId },
-      $pull: { sentFriendRequests: currentUserId }
+    //update the sender's sentFriendRequests array
+    await User.findByIdAndUpdate(currentUserId, {
+      $push: { sentFriendRequests: selectedUserId },
     });
 
     res.sendStatus(200);
   } catch (error) {
-    console.error(error);
     res.sendStatus(500);
   }
 });
