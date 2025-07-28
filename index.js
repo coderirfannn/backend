@@ -177,6 +177,26 @@ app.post("/friend-request", async (req, res) => {
 });
 
 
+app.post('/friend-request/reject', async (req, res) => {
+  try {
+    const { requestId, userId } = req.body;
+
+    await User.findByIdAndUpdate(userId, {
+      $pull: { friendRequests: requestId }
+    });
+
+    await User.findByIdAndUpdate(requestId, {
+      $pull: { sentFriendRequests: userId }
+    });
+
+    res.status(200).json({ message: 'Friend request rejected' });
+  } catch (error) {
+    console.error('POST /friend-request/reject error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
 
 // app.get("/users/:userId", async (req, res) => {
 //   try {
