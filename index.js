@@ -33,6 +33,11 @@ app.listen(port, () => {
 const User = require("./models/user");
 const Message = require("./models/message");
 
+
+
+
+
+
 //endpoint for registration of the user
 
 app.post("/register", (req, res) => {
@@ -98,6 +103,36 @@ app.post("/login", (req, res) => {
       res.status(500).json({ message: "Internal server Error!" });
     });
 });
+
+
+const authenticate = async (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer <token>
+
+  if (!token) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, "Q$r2K6W8n!jCW%Zk");
+    const user = await User.findById(decoded.userId).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+
+app.get("/api/current-user", authenticate, (req, res) => {
+  res.status(200).json(req.user);
+});
+
 
 //endpoint to access all the users except the user who's is currently logged in!
 app.get("/users/:userId", (req, res) => {
